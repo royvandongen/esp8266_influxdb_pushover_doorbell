@@ -14,19 +14,17 @@ int ringing = 0;
 unsigned long buttonPushed = millis();
 unsigned long startRing = millis();
 
-long debouncing_time = 10000; //Debouncing Time in Milliseconds ( EG How long should the doorbell knob be ignored )
+long debouncing_time = 10000; //Debouncing Time in Milliseconds
 volatile unsigned long last_micros;
 
 // InfluxDB Server
 char INFLUXDB_SERVER[40];             // Your InfluxDB Server FQDN
 char INFLUXDB_PORT[5] = "8089";       // Default InfluxDB UDP Port
-char INFLUXDB_INTERVAL[6] = "10000";  // Milliseconds between measurements 
-char SENSOR_LOCATION[20] = "test";    // This location is used for the "device=" part of the InfluxDB update
+char SENSOR_LOCATION[20] = "location";    // This location is used for the "device=" part of the InfluxDB update
 
 // Pushover
 char PUSHOVER_TOKEN[40];              // Your Pushover Token
 char PUSHOVER_USER[40];               // Your Pushover User
-
 
 int length;
 
@@ -67,7 +65,6 @@ void setup() {
 
           strcpy(INFLUXDB_SERVER, json["INFLUXDB_SERVER"]);
           strcpy(INFLUXDB_PORT, json["INFLUXDB_PORT"]);
-          strcpy(INFLUXDB_INTERVAL, json["INFLUXDB_INTERVAL"]);
           strcpy(SENSOR_LOCATION, json["SENSOR_LOCATION"]);
           strcpy(PUSHOVER_TOKEN, json["PUSHOVER_TOKEN"]);
           strcpy(PUSHOVER_USER, json["PUSHOVER_USER"]);
@@ -83,10 +80,9 @@ void setup() {
 
   WiFiManagerParameter custom_influxdb_server("server", "InfluxDB Server", INFLUXDB_SERVER, 40);
   WiFiManagerParameter custom_influxdb_port("port", "8089", INFLUXDB_PORT, 5);
-  WiFiManagerParameter custom_influxdb_interval("interval", "10000", INFLUXDB_INTERVAL, 6);
-  WiFiManagerParameter custom_sensor_location("location", "Location", SENSOR_LOCATION, 20);
+  WiFiManagerParameter custom_sensor_location("location", "Sensor Location", SENSOR_LOCATION, 20);
   WiFiManagerParameter custom_pushover_token("token", "Pushover Token", PUSHOVER_TOKEN, 40);
-  WiFiManagerParameter custom_pushover_user("token", "Pushover User", PUSHOVER_TOKEN, 40);
+  WiFiManagerParameter custom_pushover_user("user", "Pushover User", PUSHOVER_USER, 40);
 
   WiFiManager wifiManager;
   //reset saved settings
@@ -96,7 +92,6 @@ void setup() {
 
   wifiManager.addParameter(&custom_influxdb_server);
   wifiManager.addParameter(&custom_influxdb_port);
-  wifiManager.addParameter(&custom_influxdb_interval);
   wifiManager.addParameter(&custom_sensor_location);
   wifiManager.addParameter(&custom_pushover_token);
   wifiManager.addParameter(&custom_pushover_user);
@@ -116,7 +111,6 @@ void setup() {
   //read updated parameters
   strcpy(INFLUXDB_SERVER, custom_influxdb_server.getValue());
   strcpy(INFLUXDB_PORT, custom_influxdb_port.getValue());
-  strcpy(INFLUXDB_INTERVAL, custom_influxdb_interval.getValue());
   strcpy(SENSOR_LOCATION, custom_sensor_location.getValue());
   strcpy(PUSHOVER_TOKEN, custom_pushover_token.getValue());
   strcpy(PUSHOVER_USER, custom_pushover_user.getValue());
@@ -129,10 +123,9 @@ void setup() {
     JsonObject& json = jsonBuffer.createObject();
     json["INFLUXDB_SERVER"] = INFLUXDB_SERVER;
     json["INFLUXDB_PORT"] = INFLUXDB_PORT;
-    json["INFLUXDB_INTERVAL"] = INFLUXDB_INTERVAL;
     json["SENSOR_LOCATION"] = SENSOR_LOCATION;
-    json["INFLUXDB_INTERVAL"] = PUSHOVER_TOKEN;
-    json["SENSOR_LOCATION"] = PUSHOVER_USER;
+    json["PUSHOVER_TOKEN"] = PUSHOVER_TOKEN;
+    json["PUSHOVER_USER"] = PUSHOVER_USER;
 
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile) {
@@ -158,10 +151,11 @@ void setup() {
 
   attachInterrupt(buttonPin, buttonPress, RISING);
 
-  if(strlen(INFLUXDB_SERVER) == 0 || strlen(INFLUXDB_PORT) == 0 || strlen(INFLUXDB_INTERVAL) == 0 || strlen(SENSOR_LOCATION) == 0 || strlen(PUSHOVER_TOKEN) == 0 || strlen(PUSHOVER_USER) == 0) {
+  if(strlen(INFLUXDB_SERVER) == 0 || strlen(INFLUXDB_PORT) == 0 || strlen(SENSOR_LOCATION) == 0 || strlen(PUSHOVER_TOKEN) == 0 || strlen(PUSHOVER_USER) == 0) {
     Serial.print("Config Faulty, Kicking config");
     SPIFFS.format();
     wifiManager.resetSettings();
+  
     delay(2000);
     ESP.reset();
   }
@@ -175,7 +169,7 @@ void loop() {
     doRing = 0;
   }
   if(ringing == 1) {
-    if(millis() - 1000 >= startRing) {
+    if(millis() - 500 >= startRing) {
       ringOff();
     }
   }
@@ -196,16 +190,18 @@ void ringOff() {
   sendData();
 }
 
-
 void buttonPress () {
-  if((long)(micros() - last_micros) >= debouncing_time * 1000) {
-    doRing = 1;
-    
+  if(ringing == 1) {
+    Serial.println("Doorbell was pushed again, doing nothing because throttling");
+  } else {
+    if((long)(micros() - last_micros) >= debouncing_time * 1000) {
+      doRing = 1;
+    }
+    last_micros = micros();
+    Serial.print("last Micros is : ");
+    Serial.println(last_micros);
+    Serial.println("Interrupted");
   }
-  last_micros = micros();
-  Serial.print("last Micros is : ");
-  Serial.println(last_micros);
-  Serial.println("Interrupted");
 }
 
 byte pushover(char *pushovermessage) {
