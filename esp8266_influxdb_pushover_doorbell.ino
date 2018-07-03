@@ -9,13 +9,16 @@
 const int buttonPin = 12;
 const int relayPin = 5;
 
-int doRing = 0;
-int ringing = 0;
+volatile int doRing = 0;
+volatile int ringing = 0;
 unsigned long buttonPushed = millis();
 unsigned long startRing = millis();
 
 long debouncing_time = 10000; //Debouncing Time in Milliseconds
-volatile unsigned long last_micros;
+
+volatile unsigned long last_millis_pressed; // Last time the button was pressed
+volatile unsigned long last_print; // The delay that needs to be printed to serial
+volatile unsigned long last_millis; // The last millis time we measured
 
 // InfluxDB Server
 char INFLUXDB_SERVER[40];             // Your InfluxDB Server FQDN
@@ -162,6 +165,13 @@ void setup() {
 }
 
 void loop() {
+  if(last_print != 0) {
+    Serial.print("last Millis is : ");
+    Serial.println(last_print);
+    Serial.println("Interrupted");
+    last_print = 0;
+  }
+  last_millis = millis();
   if(doRing == 1) {
     Serial.println("doRing started");
     ringOn();
@@ -192,15 +202,16 @@ void ringOff() {
 
 void buttonPress () {
   if(ringing == 1) {
-    Serial.println("Doorbell was pushed again, doing nothing because throttling");
+    // Serial.println("Doorbell was pushed again, doing nothing because throttling");
   } else {
-    if((long)(micros() - last_micros) >= debouncing_time * 1000) {
+    if((long)(last_millis - last_millis_pressed) >= debouncing_time) {
       doRing = 1;
     }
-    last_micros = micros();
-    Serial.print("last Micros is : ");
-    Serial.println(last_micros);
-    Serial.println("Interrupted");
+    last_millis_pressed = last_millis;
+    last_print = last_millis;
+    // Serial.print("last Micros is : ");
+    // Serial.println(last_micros);
+    // Serial.println("Interrupted");
   }
 }
 
